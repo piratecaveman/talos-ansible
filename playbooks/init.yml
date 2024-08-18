@@ -1,0 +1,8 @@
+- name: Initialize Systems
+  hosts: kubenet
+  gather_facts: false
+  become: true
+  become_user: root
+  become_method: ansible.builtin.sudo
+  roles:
+    - role: init

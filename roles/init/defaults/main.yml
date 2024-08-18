@@ -1,0 +1,16 @@
+init_packages:
+  - jq
+init_modules:
+  - overlay
+  - br_netfilter
+  - rbd
+init_sysctl:
+  - name: net.bridge.bridge-nf-call-iptables
+    value: 1
+    file: 10-bridge-nf-call-iptables.conf
+  - name: net.bridge.bridge-nf-call-ip6tables
+    value: 1
+    file: 10-bridge-nf-call-ip6tables.conf
+  - name: net.ipv4.ip_forward
+    value: 1
+    file: 10-ip-forward.conf

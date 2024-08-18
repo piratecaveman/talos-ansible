@@ -1,0 +1,11 @@
+**/**
+
+!ansible.cfg
+!.gitignore
+
+!inventory/
+!inventory/**
+!roles/
+!roles/**
+!playbooks/
+!playbooks/**

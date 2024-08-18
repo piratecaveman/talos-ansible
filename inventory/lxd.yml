@@ -1,0 +1,17 @@
+plugin: community.general.lxd
+type_filter: both
+url: unix:/var/lib/incus/unix.socket
+
+groupby:
+  kubenet:
+    type: pattern
+    attribute: ^kube
+  workers:
+    type: pattern
+    attribute: ^kube-minion
+  control:
+    type: pattern
+    attribute: ^kube-control
+  balancer:
+    type: pattern
+    attribute: ^kube-lb

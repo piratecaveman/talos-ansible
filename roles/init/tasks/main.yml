@@ -1,0 +1,94 @@
+- name: Install packages
+  ansible.builtin.apt:
+    update_cache: true
+    state: present
+    cache_valid_time: 3600
+    install_recommends: false
+    autoclean: true
+    autoremove: true
+    name: '{{ init_packages }}'
+
+- name: Disable swap
+  block:
+    - name: Remove swap /etc/fstab
+      ansible.posix.mount:
+        fstype: swap
+        state: absent_from_fstab
+        path: swap
+
+    - name: Remove swap
+      ansible.posix.mount:
+        fstype: swap
+        state: absent
+        path: swap
+
+    - name: Disable swap target
+      ansible.builtin.systemd:
+        name: swap.target
+        enabled: false
+        state: stopped
+        masked: true
+
+    - name: Swapoff
+      ansible.builtin.command:
+        argv:
+          - /usr/sbin/swapoff
+          - -a
+      changed_when: false
+  rescue:
+    - name: Error
+      ansible.builtin.debug:
+        msg: 'Something went wrong ...'
+
+- name: Load kernel modules
+  community.general.modprobe:
+    name: '{{ item }}'
+    state: present
+    persistent: present
+  with_items: '{{ init_modules }}'
+
+- name: Tune system parameters
+  ansible.posix.sysctl:
+    name: '{{ item.name }}'
+    value: '{{ item.value }}'
+    state: present
+    reload: true
+    sysctl_set: true
+    sysctl_file: '/etc/sysctl.d/{{ item.file }}'
+  with_items: '{{ init_sysctl }}'
+
+- name: Kubernetes client user
+  block:
+    - name: Create group
+      ansible.builtin.group:
+        name: kube
+        state: present
+
+    - name: Create user
+      ansible.builtin.user:
+        name: kube
+        password: $y$j9T$CRmS4c2mci4M5bICHBKPw/$G63L8oZ37.OgBqzGPxZv7dj/D4K5MLy4ABHumobnkw1
+        shell: /bin/bash
+        state: present
+        create_home: true
+        group: kube
+
+    - name: Add SSH key
+      ansible.posix.authorized_key:
+        user: kube
+        key: 'ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAINWSCBV+u+F8WqvZp3um1Wj/dq0vJpytljaRA1EuBJlm wraith@kelpie'
+        manage_dir: true
+
+    - name: Sudo access for user
+      community.general.sudoers:
+        name: 01_kube
+        user: kube
+        nopassword: true
+        commands:
+          - ALL
+        state: present
+        validation: required
+  rescue:
+    - name: Error
+      ansible.builtin.fail:
+        msg: 'Something went wrong ...'
