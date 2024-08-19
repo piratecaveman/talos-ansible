@@ -1,0 +1,10 @@
+- name: Install dependencies
+  tags:
+    - crio
+  ansible.builtin.apt:
+    name: '{{ crio_dependencies }}'
+    state: present
+    cache_valid_time: 3600
+    autoremove: true
+    autoclean: true
+    install_recommends: false

@@ -1,0 +1,24 @@
+- name: Ensure keyring dir
+  tags:
+    - kubetools
+  ansible.builtin.file:
+    path: '{{ kubetools_keyring.dir }}'
+    mode: '0755'
+    state: directory
+
+- name: Add release key
+  tags:
+    - kubetools
+  ansible.builtin.get_url:
+    url: '{{ kubetools_keyring.url }}'
+    dest: '{{ kubetools_keyring.dir }}/{{ kubetools_keyring.name }}'
+    mode: '0644'
+
+- name: Add repository
+  tags:
+    - kubetools
+  ansible.builtin.apt_repository:
+    repo: 'deb [{{ kubetools_repo.signer }}] {{ kubetools_repo.url }} /'
+    state: present
+    filename: kubernetes
+    # update_cache: true

@@ -6,3 +6,5 @@
   become_method: ansible.builtin.sudo
   roles:
     - role: init
+    - role: crio
+    - role: kubetools
