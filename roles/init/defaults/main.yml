@@ -1,5 +1,7 @@
 init_packages:
   - jq
+  - gpg
+  - python3-debian
 init_modules:
   - overlay
   - br_netfilter

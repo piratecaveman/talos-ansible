@@ -1,0 +1,9 @@
+crio_version: 'v1.31'
+crio_keyring:
+  url: https://pkgs.k8s.io/addons:/cri-o:/prerelease:/{{ crio_version }}/deb/Release.key
+  dir: /etc/apt/keyrings
+  name: cri-o-apt-keyring.gpg
+
+crio_repo:
+  url: https://pkgs.k8s.io/addons:/cri-o:/prerelease:/{{ crio_version }}/deb/
+  signer: '{{ crio_keyring.dir }}/{{ crio_keyring.name }}'

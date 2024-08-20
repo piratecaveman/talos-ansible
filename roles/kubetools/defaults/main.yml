@@ -1,8 +1,8 @@
 kubetools_keyring:
   url: https://pkgs.k8s.io/core:/stable:/v1.31/deb/Release.key
   dir: /etc/apt/keyrings
-  name: kubernetes-apt-kerying.asc
+  name: kubernetes-apt-kerying.gpg
 
 kubetools_repo:
-  signer: 'signed-by={{ kubetools_keyring.dir }}/{{ kubetools_keyring.name }}'
+  signer: '{{ kubetools_keyring.dir }}/{{ kubetools_keyring.name }}'
   url: https://pkgs.k8s.io/core:/stable:/v1.31/deb/

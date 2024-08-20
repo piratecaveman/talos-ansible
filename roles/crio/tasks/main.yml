@@ -8,3 +8,55 @@
     autoremove: true
     autoclean: true
     install_recommends: false
+
+- name: Download key
+  tags:
+    - crio
+  ansible.builtin.get_url:
+    url: '{{ crio_keyring.url }}'
+    dest: /tmp/crio-release.key
+    mode: '0644'
+    force: true
+
+- name: Dearmor key
+  tags:
+    - crio
+  ansible.builtin.command:
+    argv:
+      - gpg
+      - --dearmor
+      - --output
+      - '{{ crio_repo.signer }}'
+      - /tmp/crio-release.key
+    creates: '{{ crio_repo.signer }}'
+
+- name: Add repository
+  tags:
+    - crio
+  ansible.builtin.deb822_repository:
+    name: crio
+    enabled: true
+    state: present
+    mode: '0644'
+    signed_by: '{{ crio_repo.signer }}'
+    types: [deb]
+    suites: ['/']
+    uris:
+      - '{{ crio_repo.url }}'
+
+- name: Install crio
+  tags:
+    - crio
+  ansible.builtin.apt:
+    name:
+      - cri-o
+    state: present
+    update_cache: true
+
+- name: Enable crio service
+  tags:
+    - crio
+  ansible.builtin.systemd_service:
+    name: crio.service
+    state: started
+    enabled: true
