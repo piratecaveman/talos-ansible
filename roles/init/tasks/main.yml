@@ -102,3 +102,43 @@
     - name: Error
       ansible.builtin.fail:
         msg: 'Something went wrong ...'
+
+- name: Interconnectivity
+  tags:
+    - init
+    - o2
+  vars:
+    users:
+      - name: root
+        ssh_home: /root/.ssh
+      - name: kube
+        ssh_home: /home/kube/.ssh
+      - name: wraith
+        ssh_home: /home/wraith/.ssh
+  block:
+    - name: Ensure ssh directory
+      ansible.builtin.file:
+        path: '{{ item.ssh_home }}'
+        owner: '{{ item.name }}'
+        group: '{{ item.name }}'
+        mode: '700'
+        state: directory
+      with_items: '{{ users }}'
+
+    - name: Add private key
+      ansible.builtin.copy:
+        dest: '{{ item.ssh_home }}/id_ed25519'
+        owner: '{{ item.name }}'
+        group: '{{ item.name }}'
+        mode: '0400'
+        content: '{{ ssh_private_key }}'
+      with_items: '{{ users }}'
+
+    - name: Add public key
+      ansible.builtin.copy:
+        dest: '{{ item.ssh_home }}/id_ed25519.pub'
+        owner: '{{ item.name }}'
+        group: '{{ item.name }}'
+        mode: '0644'
+        content: '{{ ssh_public_key }}'
+      with_items: '{{ users }}'

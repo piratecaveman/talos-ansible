@@ -7,4 +7,5 @@
   roles:
     - role: init
     - role: crio
+      crio_version: v1.31
     - role: kubetools
