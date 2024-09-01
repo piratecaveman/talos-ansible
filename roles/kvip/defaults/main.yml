@@ -1,0 +1,3 @@
+kvip_vip: '{{ control_plane_vip }}'
+kvip_interface: enp5s0
+kvip_version: v0.8.2

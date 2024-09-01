@@ -6,6 +6,22 @@
   become_method: ansible.builtin.sudo
   roles:
     - role: init
+      tags: init
     - role: crio
-      crio_version: v1.31
+      tags: crio
+      vars:
+        crio_version: v1.31
     - role: kubetools
+      tags: kubetools
+
+- name: Install kube-vip
+  hosts: control
+  gather_facts: false
+  become: true
+  become_user: root
+  become_method: ansible.builtin.sudo
+  roles:
+    - role: kvip
+      tags: kvip
+      vars:
+        kvip_version: v0.8.2

@@ -1,6 +1,4 @@
 - name: Install packages
-  tags:
-    - init
   ansible.builtin.apt:
     update_cache: true
     state: present
@@ -11,8 +9,6 @@
     name: '{{ init_packages }}'
 
 - name: Disable swap
-  tags:
-    - init
   block:
     - name: Remove swap /etc/fstab
       ansible.posix.mount:
@@ -45,8 +41,6 @@
         msg: 'Something went wrong ...'
 
 - name: Load kernel modules
-  tags:
-    - init
   community.general.modprobe:
     name: '{{ item }}'
     state: present
@@ -54,8 +48,6 @@
   with_items: '{{ init_modules }}'
 
 - name: Tune system parameters
-  tags:
-    - init
   ansible.posix.sysctl:
     name: '{{ item.name }}'
     value: '{{ item.value }}'
@@ -66,8 +58,6 @@
   with_items: '{{ init_sysctl }}'
 
 - name: Kubernetes client user
-  tags:
-    - init
   block:
     - name: Create group
       ansible.builtin.group:
@@ -104,9 +94,6 @@
         msg: 'Something went wrong ...'
 
 - name: Interconnectivity
-  tags:
-    - init
-    - o2
   vars:
     users:
       - name: root
@@ -142,3 +129,7 @@
         mode: '0644'
         content: '{{ ssh_public_key }}'
       with_items: '{{ users }}'
+  rescue:
+    - name: Error
+      ansible.builtin.fail:
+        msg: "Something went wrong ..."

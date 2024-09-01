@@ -1,0 +1,10 @@
+- name: Create cluster
+  hosts: control[0]
+  gather_facts: false
+  become: true
+  become_user: root
+  become_method: ansible.builtin.sudo
+  roles:
+    - role: k8sinit
+      tags:
+        - k8sinit
