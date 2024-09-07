@@ -11,3 +11,27 @@
     - role: cluster
       tags:
         - cluster
+
+- name: Install kube-vip
+  hosts: control
+  gather_facts: false
+  become: true
+  become_user: root
+  become_method: ansible.builtin.sudo
+  roles:
+    - role: kvip
+      tags: kvip
+      vars:
+        kvip_version: v0.8.2
+
+- name: Reboot all machines
+  hosts: kubenet
+  gather_facts: false
+  become: true
+  become_user: root
+  become_method: ansible.builtin.sudo
+  tasks:
+    - name: Reboot
+      tags:
+        - reboot
+      ansible.builtin.reboot:
