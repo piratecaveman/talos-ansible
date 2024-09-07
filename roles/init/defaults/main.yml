@@ -2,6 +2,7 @@ init_packages:
   - jq
   - gpg
   - python3-debian
+  - python3-kubernetes
 init_modules:
   - overlay
   - br_netfilter

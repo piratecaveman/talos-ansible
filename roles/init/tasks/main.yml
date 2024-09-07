@@ -6,7 +6,7 @@
     install_recommends: false
     autoclean: true
     autoremove: true
-    name: '{{ init_packages }}'
+    name: "{{ init_packages }}"
 
 - name: Disable swap
   block:
@@ -38,24 +38,24 @@
   rescue:
     - name: Error
       ansible.builtin.debug:
-        msg: 'Something went wrong ...'
+        msg: "{{ ansible_failed_result }}"
 
 - name: Load kernel modules
   community.general.modprobe:
-    name: '{{ item }}'
+    name: "{{ item }}"
     state: present
     persistent: present
-  with_items: '{{ init_modules }}'
+  with_items: "{{ init_modules }}"
 
 - name: Tune system parameters
   ansible.posix.sysctl:
-    name: '{{ item.name }}'
-    value: '{{ item.value }}'
+    name: "{{ item.name }}"
+    value: "{{ item.value }}"
     state: present
     reload: true
     sysctl_set: true
-    sysctl_file: '/etc/sysctl.d/{{ item.file }}'
-  with_items: '{{ init_sysctl }}'
+    sysctl_file: "/etc/sysctl.d/{{ item.file }}"
+  with_items: "{{ init_sysctl }}"
 
 - name: Kubernetes client user
   block:
@@ -76,7 +76,7 @@
     - name: Add SSH key
       ansible.posix.authorized_key:
         user: kube
-        key: 'ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAINWSCBV+u+F8WqvZp3um1Wj/dq0vJpytljaRA1EuBJlm wraith@kelpie'
+        key: ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAINWSCBV+u+F8WqvZp3um1Wj/dq0vJpytljaRA1EuBJlm wraith@kelpie
         manage_dir: true
 
     - name: Sudo access for user
@@ -91,7 +91,7 @@
   rescue:
     - name: Error
       ansible.builtin.fail:
-        msg: 'Something went wrong ...'
+        msg: "{{ ansible_failed_result }}"
 
 - name: Interconnectivity
   vars:
@@ -105,31 +105,31 @@
   block:
     - name: Ensure ssh directory
       ansible.builtin.file:
-        path: '{{ item.ssh_home }}'
-        owner: '{{ item.name }}'
-        group: '{{ item.name }}'
-        mode: '700'
+        path: "{{ item.ssh_home }}"
+        owner: "{{ item.name }}"
+        group: "{{ item.name }}"
+        mode: "700"
         state: directory
-      with_items: '{{ users }}'
+      with_items: "{{ users }}"
 
     - name: Add private key
       ansible.builtin.copy:
-        dest: '{{ item.ssh_home }}/id_ed25519'
-        owner: '{{ item.name }}'
-        group: '{{ item.name }}'
-        mode: '0400'
-        content: '{{ ssh_private_key }}'
-      with_items: '{{ users }}'
+        dest: "{{ item.ssh_home }}/id_ed25519"
+        owner: "{{ item.name }}"
+        group: "{{ item.name }}"
+        mode: "0400"
+        content: "{{ ssh_private_key }}"
+      with_items: "{{ users }}"
 
     - name: Add public key
       ansible.builtin.copy:
-        dest: '{{ item.ssh_home }}/id_ed25519.pub'
-        owner: '{{ item.name }}'
-        group: '{{ item.name }}'
-        mode: '0644'
-        content: '{{ ssh_public_key }}'
-      with_items: '{{ users }}'
+        dest: "{{ item.ssh_home }}/id_ed25519.pub"
+        owner: "{{ item.name }}"
+        group: "{{ item.name }}"
+        mode: "0644"
+        content: "{{ ssh_public_key }}"
+      with_items: "{{ users }}"
   rescue:
     - name: Error
       ansible.builtin.fail:
-        msg: "Something went wrong ..."
+        msg: "{{ ansible_failed_result }}"

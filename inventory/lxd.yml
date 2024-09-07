@@ -12,6 +12,3 @@ groupby:
   control:
     type: pattern
     attribute: ^kube-control
-  balancer:
-    type: pattern
-    attribute: ^kube-lb

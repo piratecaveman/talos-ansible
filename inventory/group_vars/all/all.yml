@@ -1,3 +1,8 @@
-control_plane_vip: '192.168.100.2'
-pod_network_cidr: '192.168.200.0/24'
-service_cidr: '192.168.250.0/24'
+control_ip:
+  addr: 192.168.100.2
+  subnet: 24
+  gateway: 192.168.100.1
+pod_network_cidr: 192.168.200.0/24
+service_cidr: 192.168.250.0/24
+service_domain: kss
+kubeconfig: /etc/kubernetes/admin.conf

@@ -1,0 +1,217 @@
+- name: Initialize kubernetes
+  when: inventory_hostname == groups["control"][0]
+  block:
+    - name: Gather stats
+      ansible.builtin.stat:
+        path: "{{ kubeconfig }}"
+      register: kubeconfig_stat
+
+    - name: Probe readiness
+      when: kubeconfig_stat.stat.exists
+      ansible.builtin.command:
+        argv:
+          - kubectl
+          - --kubeconfig
+          - "{{ kubeconfig }}"
+          - get
+          - --raw
+          - /readyz
+      register: readyz
+      changed_when: readyz.rc != 0
+      failed_when: false
+
+    - name: Probe readiness dummy
+      when: not kubeconfig_stat.stat.exists
+      ansible.builtin.set_fact:
+        readyz:
+          rc: 1
+
+    - name: Reset cluster
+      when: readyz.rc != 0
+      ansible.builtin.command:
+        argv:
+          - kubeadm
+          - reset
+          - --force
+      register: cluster_reset
+      changed_when: cluster_reset.rc != 0
+
+    - name: Create vip
+      when: control_ip.addr not in ansible_facts["all_ipv4_addresses"]
+      ansible.builtin.command:
+        argv:
+          - ip
+          - address
+          - add
+          - "{{ control_ip.addr }}/{{ control_ip.subnet }}"
+          - dev
+          - "{{ ansible_facts.default_ipv4.interface }}"
+      register: control_ip_assign
+      changed_when: control_ip_assign.rc != 0
+
+    - name: Initialize cluster
+      when: not kubeconfig_stat.stat.exists or readyz.rc != 0
+      ansible.builtin.command:
+        argv:
+          - kubeadm
+          - init
+          - --control-plane-endpoint
+          - "{{ control_ip.addr }}"
+          - --pod-network-cidr
+          - "{{ pod_network_cidr }}"
+          - --service-cidr
+          - "{{ service_cidr }}"
+          - --service-dns-domain
+          - "{{ service_domain }}"
+          - --apiserver-cert-extra-sans
+          - "{{ control_ip.addr }}"
+          - --upload-certs
+      register: cluster_init
+      changed_when: cluster_init.rc != 0
+
+    - name: Create certificate-key
+      ansible.builtin.command:
+        argv:
+          - kubeadm
+          - certs
+          - certificate-key
+      register: certificate_key
+      changed_when: certificate_key.rc != 0
+
+    - name: Generate join command
+      ansible.builtin.command:
+        argv:
+          - kubeadm
+          - token
+          - create
+          - --print-join-command
+      register: join_command
+      changed_when: join_command.rc != 0
+
+    - name: Upload certs
+      ansible.builtin.command:
+        argv:
+          - kubeadm
+          - init
+          - phase
+          - upload-certs
+          - --upload-certs
+          - --certificate-key
+          - "{{ certificate_key.stdout }}"
+      register: upload_certs
+      changed_when: upload_certs.rc != 0
+
+  rescue:
+    - name: Error
+      ansible.builtin.fail:
+        msg: "{{ ansible_failed_result }}"
+
+- name: Join controlplane nodes
+  when: inventory_hostname in groups["control"] and inventory_hostname != groups["control"][0]
+  block:
+    - name: Gather stats
+      ansible.builtin.stat:
+        path: "{{ kubeconfig }}"
+      register: kubeconfig_stat
+
+    - name: Probe readiness
+      when: kubeconfig_stat.stat.exists
+      ansible.builtin.command:
+        argv:
+          - kubectl
+          - --kubeconfig
+          - "{{ kubeconfig }}"
+          - get
+          - --raw
+          - /readyz
+      register: readyz
+      changed_when: readyz.rc != 0
+      failed_when: false
+
+    - name: Probe readiness dummy
+      when: not kubeconfig_stat.stat.exists
+      ansible.builtin.set_fact:
+        readyz:
+          rc: 1
+
+    - name: Reset cluster
+      when: readyz.rc != 0
+      ansible.builtin.command:
+        argv:
+          - kubeadm
+          - reset
+          - --force
+      register: cluster_reset
+      changed_when: cluster_reset.rc != 0
+
+    - name: Join cluster
+      when: not kubeconfig_stat.stat.exists or readyz.rc != 0
+      ansible.builtin.command:
+        cmd: "{{ hostvars[groups['control'][0]].join_command.stdout }} \
+          --certificate-key {{ hostvars[groups['control'][0]].certificate_key.stdout }} \
+          --control-plane"
+      register: join_status
+      changed_when: join_status.rc != 0
+
+  rescue:
+    - name: Error
+      ansible.builtin.fail:
+        msg: "{{ ansible_failed_result }}"
+
+- name: Join worker nodes
+  when: inventory_hostname in groups["workers"]
+  block:
+    - name: Detect status
+      ansible.builtin.command:
+        argv:
+          - kubeam
+          - join
+          - phase
+          - preflight
+      register: worker_status
+      failed_when: false
+      changed_when: worker_status.rc != 0
+
+    - name: Join worker node
+      when: worker_status.rc == 0
+      ansible.builtin.command:
+        cmd: "{{ hostvars[groups['control'][0]].join_command.stdout }}"
+      register: join_status
+      changed_when: join_status.rc != 0
+
+  rescue:
+    - name: Error
+      ansible.builtin.fail:
+        msg: "{{ ansible_failed_result }}"
+
+- name: Commonalities
+  when: inventory_hostname in groups["control"]
+  block:
+    - name: Ensure .kube
+      ansible.builtin.file:
+        path: /home/kube/.kube
+        mode: "0755"
+        state: directory
+        owner: kube
+        group: kube
+
+    - name: Create config
+      ansible.builtin.copy:
+        dest: /home/kube/.kube/config
+        src: "{{ kubeconfig }}"
+        remote_src: true
+        mode: "0600"
+        owner: kube
+        group: kube
+
+    - name: Create alias
+      ansible.builtin.lineinfile:
+        path: /home/kube/.bashrc
+        line: alias k=kubectl
+        state: present
+        create: false
+
+  rescue:
+    - name: Error
+      ansible.builtin.fail:
+        msg: "{{ ansible_failed_result }}"
