@@ -1,0 +1,39 @@
+- name: Download key
+  ansible.builtin.get_url:
+    url: "{{ helm_key.url }}"
+    dest: /tmp/helm_signing.asc
+    mode: "0644"
+    force: true
+
+- name: Dearmor key
+  ansible.builtin.command:
+    argv:
+      - gpg
+      - --dearmor
+      - --output
+      - "{{ helm_repo.signer }}"
+      - /tmp/helm_signing.asc
+    creates: "{{ helm_repo.signer }}"
+
+- name: Add repository
+  ansible.builtin.deb822_repository:
+    name: helm
+    enabled: true
+    state: present
+    mode: "0644"
+    signed_by: "{{ helm_repo.signer }}"
+    types: [deb]
+    architectures:
+      - amd64
+    suites: [all]
+    components:
+      - main
+    uris:
+      - "{{ helm_repo.url }}"
+
+- name: Install helm
+  ansible.builtin.apt:
+    name:
+      - helm
+    state: present
+    update_cache: true

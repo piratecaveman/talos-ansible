@@ -1,0 +1,73 @@
+- name: Install cilium cli
+  block:
+    - name: Stat binaries
+      ansible.builtin.stat:
+        path: /usr/local/bin/cilium
+      register: cilium_cli_stat
+
+    - name: Download release
+      when: not cilium_cli_stat.stat.exists
+      ansible.builtin.get_url:
+        url: "{{ cilium_cli_url }}"
+        dest: /tmp/cilium.tar.gz
+        mode: '0644'
+
+    - name: Extract release
+      when: not cilium_cli_stat.stat.exists
+      ansible.builtin.unarchive:
+        src: /tmp/cilium.tar.gz
+        dest: /usr/local/bin
+        remote_src: true
+
+  rescue:
+    - name: Error
+      ansible.builtin.fail:
+        msg: "{{ ansible_failed_result }}"
+
+- name: Install cilium
+  when: inventory_hostname == groups["control"][0]
+  environment:
+    KUBECONFIG: "{{ kubeconfig }}"
+  block:
+    - name: Check cilium ds
+      kubernetes.core.k8s_info:
+        api_version: apps/v1
+        kind: DaemonSet
+        namespace: kube-system
+        name: cilium
+        kubeconfig: "{{ kubeconfig }}"
+      register: cilium_status
+
+    - name: Install cilium
+      when: not cilium_status.resources
+      ansible.builtin.command:
+        argv:
+          - cilium
+          - install
+          - "{{ cilium_main_version }}"
+      register: cilium_status
+      changed_when: cilium_status.rc != 0
+
+    - name: Verify Cilium
+      ansible.builtin.command:
+        argv:
+          - cilium
+          - status
+      register: cilium_status
+      until: cilium_status.rc == 0
+      changed_when: cilium_status.rc != 0
+      delay: 90
+      timeout: 100
+
+    - name: Enable hubble
+      ansible.builtin.command:
+        argv:
+          - cilium
+          - hubble
+          - enable
+      register: hubble_status
+      changed_when: hubble_status.rc != 0
+  rescue:
+    - name: Error
+      ansible.builtin.fail:
+        msg: "{{ ansible_failed_result }}"

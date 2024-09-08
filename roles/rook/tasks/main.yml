@@ -1,0 +1,58 @@
+- name: Install rook
+  when: inventory_hostname in groups["control"][0]
+  block:
+    - name: Add repo
+      kubernetes.core.helm_repository:
+        repo_name: rook-release
+        repo_url: "{{ rook_repo }}"
+        repo_state: present
+        kubeconfig: "{{ kubeconfig }}"
+
+    - name: Install rook-ceph
+      kubernetes.core.helm:
+        release_name: rook-ceph
+        release_namespace: rook-ceph
+        create_namespace: true
+        chart_ref: rook-release/rook-ceph
+        kubeconfig: "{{ kubeconfig }}"
+        atomic: true
+        release_state: present
+        reuse_values: true
+
+    - name: Install ceph cluster
+      kubernetes.core.helm:
+        release_name: rook-ceph-cluster
+        release_namespace: rook-ceph
+        kubeconfig: "{{ kubeconfig }}"
+        chart_ref: rook-release/rook-ceph-cluster
+        release_state: present
+        reuse_values: true
+        create_namespace: true
+        release_values:
+          cephBlockPools:
+            - name: ceph-blockpool
+              spec:
+                replicated:
+                  size: 1
+                  requireSafeReplicaSize: false
+              storageClass:
+                enabled: true
+                name: ceph-block
+          cephClusterSpec:
+            cephVersion:
+              image: quay.io/ceph/ceph:v18.2.4
+            dataDirHostPath: /var/lib/rook
+            mon:
+              count: 3
+              allowMultiplePerNode: false
+            storage:
+              useAllNodes: true
+              useAllDevices: true
+          monitoring:
+            enabled: true
+            # createPrometheusRules: true
+
+  rescue:
+    - name: Error
+      ansible.builtin.fail:
+        msg: "{{ ansible_failed_result }}"

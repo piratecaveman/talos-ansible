@@ -2,3 +2,4 @@ kvip_vip: "{{ control_ip.addr }}"
 kvip_interface: enp5s0
 kvip_version: v0.8.2
 kvip_rbac: https://kube-vip.io/manifests/rbac.yaml
+kvip_controller: https://raw.githubusercontent.com/kube-vip/kube-vip-cloud-provider/main/manifest/kube-vip-cloud-controller.yaml

@@ -20,18 +20,51 @@
   become_method: ansible.builtin.sudo
   roles:
     - role: kvip
-      tags: kvip
+      tags:
+        - kvip
       vars:
         kvip_version: v0.8.2
 
-- name: Reboot all machines
+- name: Install helm
+  hosts: control
+  gather_facts: false
+  become: true
+  become_user: root
+  become_method: ansible.builtin.sudo
+  roles:
+    - role: helm
+      tags:
+        - helm
+
+- name: Install cilium
   hosts: kubenet
   gather_facts: false
   become: true
   become_user: root
   become_method: ansible.builtin.sudo
-  tasks:
-    - name: Reboot
+  roles:
+    - role: cilium
       tags:
-        - reboot
-      ansible.builtin.reboot:
+        - cilium
+
+# - name: Install openebs
+#   hosts: kubenet
+#   gather_facts: false
+#   become: true
+#   become_user: root
+#   become_method: ansible.builtin.sudo
+#   roles:
+#     - role: openebs
+#       tags:
+#         - openebs
+
+- name: Install rook
+  hosts: kubenet
+  gather_facts: false
+  become: true
+  become_user: root
+  become_method: ansible.builtin.sudo
+  roles:
+    - role: rook
+      tags:
+        - rook

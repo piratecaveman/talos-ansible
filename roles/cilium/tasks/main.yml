@@ -1,0 +1,89 @@
+- name: Install cilium
+  when: inventory_hostname == groups["control"][0]
+  block:
+    - name: Install cilium repo
+      kubernetes.core.helm_repository:
+        repo_name: cilium
+        repo_url: https://helm.cilium.io/
+        repo_state: present
+        kubeconfig: "{{ kubeconfig }}"
+
+    - name: Install cilium
+      kubernetes.core.helm:
+        release_name: cilium
+        release_namespace: kube-system
+        kubeconfig: "{{ kubeconfig }}"
+        chart_ref: cilium/cilium
+        reuse_values: true
+        atomic: true
+        release_values:
+          hubble:
+            ui:
+              enabled: true
+            relay:
+              enabled: true
+          ingressController:
+            enabled: true
+            default: true
+          # egressGateway:
+          #   enabled: true
+      register: cilium_status
+
+  rescue:
+    - name: Error
+      ansible.builtin.fail:
+        msg: "{{ ansible_failed_result }}"
+
+- name: Install cilium cli
+  block:
+    - name: Stat binaries
+      ansible.builtin.stat:
+        path: /usr/local/bin/cilium
+      register: cilium_cli_stat
+
+    - name: Download release
+      when: not cilium_cli_stat.stat.exists
+      ansible.builtin.get_url:
+        url: "{{ cilium_cli_url }}"
+        dest: /tmp/cilium.tar.gz
+        mode: "0644"
+        checksum: "{{ cilium_cli_sha256sum }}"
+
+    - name: Extract release
+      when: not cilium_cli_stat.stat.exists
+      ansible.builtin.unarchive:
+        src: /tmp/cilium.tar.gz
+        dest: /usr/local/bin
+        remote_src: true
+
+  rescue:
+    - name: Error
+      ansible.builtin.fail:
+        msg: "{{ ansible_failed_result }}"
+
+- name: Install hubble cli
+  block:
+    - name: Stat binaries
+      ansible.builtin.stat:
+        path: /usr/local/bin/hubble
+      register: hubble_cli_stat
+
+    - name: Download release
+      when: not hubble_cli_stat.stat.exists
+      ansible.builtin.get_url:
+        url: "{{ cilium_hubble_cli_url }}"
+        dest: /tmp/hubble.tar.gz
+        mode: "0644"
+        checksum: "{{ cilium_hubble_cli_sha256sum }}"
+
+    - name: Extract release
+      when: not hubble_cli_stat.stat.exists
+      ansible.builtin.unarchive:
+        src: /tmp/hubble.tar.gz
+        dest: /usr/local/bin
+        remote_src: true
+
+  rescue:
+    - name: Error
+      ansible.builtin.fail:
+        msg: "{{ ansible_failed_result }}"

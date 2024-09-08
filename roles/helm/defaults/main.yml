@@ -1,0 +1,5 @@
+helm_key:
+  url: https://baltocdn.com/helm/signing.asc
+helm_repo:
+  signer: /usr/share/keyrings/helm.gpg
+  url: https://baltocdn.com/helm/stable/debian/

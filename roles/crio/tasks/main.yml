@@ -1,6 +1,6 @@
 - name: Install dependencies
   ansible.builtin.apt:
-    name: '{{ crio_dependencies }}'
+    name: "{{ crio_dependencies }}"
     state: present
     cache_valid_time: 3600
     autoremove: true
@@ -9,9 +9,9 @@
 
 - name: Download key
   ansible.builtin.get_url:
-    url: '{{ crio_keyring.url }}'
+    url: "{{ crio_keyring.url }}"
     dest: /tmp/crio-release.key
-    mode: '0644'
+    mode: "0644"
     force: true
 
 - name: Dearmor key
@@ -20,21 +20,21 @@
       - gpg
       - --dearmor
       - --output
-      - '{{ crio_repo.signer }}'
+      - "{{ crio_repo.signer }}"
       - /tmp/crio-release.key
-    creates: '{{ crio_repo.signer }}'
+    creates: "{{ crio_repo.signer }}"
 
 - name: Add repository
   ansible.builtin.deb822_repository:
     name: crio
     enabled: true
     state: present
-    mode: '0644'
-    signed_by: '{{ crio_repo.signer }}'
+    mode: "0644"
+    signed_by: "{{ crio_repo.signer }}"
     types: [deb]
-    suites: ['/']
+    suites: [/]
     uris:
-      - '{{ crio_repo.url }}'
+      - "{{ crio_repo.url }}"
 
 - name: Install crio
   ansible.builtin.apt:

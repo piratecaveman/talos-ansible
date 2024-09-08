@@ -36,19 +36,6 @@
       register: cluster_reset
       changed_when: cluster_reset.rc != 0
 
-    - name: Create vip
-      when: control_ip.addr not in ansible_facts["all_ipv4_addresses"]
-      ansible.builtin.command:
-        argv:
-          - ip
-          - address
-          - add
-          - "{{ control_ip.addr }}/{{ control_ip.subnet }}"
-          - dev
-          - "{{ ansible_facts.default_ipv4.interface }}"
-      register: control_ip_assign
-      changed_when: control_ip_assign.rc != 0
-
     - name: Initialize cluster
       when: not kubeconfig_stat.stat.exists or readyz.rc != 0
       ansible.builtin.command:
@@ -61,8 +48,6 @@
           - "{{ pod_network_cidr }}"
           - --service-cidr
           - "{{ service_cidr }}"
-          - --service-dns-domain
-          - "{{ service_domain }}"
           - --apiserver-cert-extra-sans
           - "{{ control_ip.addr }}"
           - --upload-certs
@@ -163,14 +148,14 @@
   block:
     - name: Detect status
       ansible.builtin.command:
-        argv:
-          - kubeam
-          - join
-          - phase
-          - preflight
+        cmd: "{{ hostvars[groups['control'][0]].join_command.stdout }} --dry-run"
       register: worker_status
       failed_when: false
       changed_when: worker_status.rc != 0
+
+    - name: Debug
+      ansible.builtin.debug:
+        var: worker_status
 
     - name: Join worker node
       when: worker_status.rc == 0

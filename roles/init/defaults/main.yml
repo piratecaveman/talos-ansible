@@ -1,6 +1,7 @@
 init_packages:
   - jq
   - gpg
+  - lvm2
   - python3-debian
   - python3-kubernetes
 init_modules:

@@ -3,3 +3,22 @@
     src: kube-vip.yaml.j2
     dest: /etc/kubernetes/manifests/kube-vip.yml
     mode: "0600"
+
+- name: Add cloud controller crd
+  kubernetes.core.k8s:
+    kubeconfig: "{{ kubeconfig }}"
+    src: "{{ kvip_controller }}"
+    state: present
+
+- name: Create a configmap for loadbalancer
+  delay: 60
+  kubernetes.core.k8s:
+    kubeconfig: "{{ kubeconfig }}"
+    resource_definition:
+      apiVersion: v1
+      data:
+        range-global: "{{ loadbalancer_range }}"
+      kind: ConfigMap
+      metadata:
+        name: kubevip
+        namespace: kube-system
