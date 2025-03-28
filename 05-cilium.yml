@@ -1,0 +1,88 @@
+---
+- name: Install cilium
+  hosts: mk8s
+  gather_facts: false
+  tasks:
+    - name: Install helm diff plugin
+      kubernetes.core.helm_plugin:
+        kubeconfig: '{{ home_dir }}/.kube/config'
+        state: present
+        plugin_path: https://github.com/databus23/helm-diff
+    - name: Add cilium repository
+      kubernetes.core.helm_repository:
+        repo_name: cilium
+        repo_url: https://helm.cilium.io/
+        repo_state: present
+        kubeconfig: '{{ home_dir }}/.kube/config'
+    - name: Ensure helm values directory
+      ansible.builtin.file:
+        path: '{{ home_dir }}/{{ item }}'
+        state: directory
+        mode: '0755'
+      loop:
+        - helm
+        - helm/cilium
+    - name: Install cilium
+      kubernetes.core.helm:
+        release_name: cilium
+        release_namespace: kube-system
+        kubeconfig: '{{ home_dir }}/.kube/config'
+        release_state: present
+        create_namespace: true
+        atomic: true
+        chart_ref: cilium/cilium
+        chart_version: '1.17.2'
+        reuse_values: true
+        release_values:
+          hubble:
+            relay:
+              enabled: true
+            peerService:
+              clusterDomain: kss
+            ui:
+              enabled: true
+
+- name: Install cilium cli
+  hosts: master
+  gather_facts: false
+  become: true
+  become_user: root
+  become_method: ansible.builtin.sudo
+  tasks:
+    - name: Install cilium
+      vars:
+        cilium_cli_version: v0.18.2
+        architecture: amd64
+      block:
+        - name: Stat cilium binary
+          ansible.builtin.stat:
+            path: /usr/local/bin/cilium
+          register: cilium_cli_bin
+        - name: Download cilium-cli
+          when: not cilium_cli_bin.stat.exists
+          ansible.builtin.get_url:
+            url: '{{ item.url }}'
+            dest: '/tmp/{{ item.name }}'
+            mode: '0644'
+          loop:
+            - name: 'cilium-linux-{{ architecture }}.tar.gz'
+              url: https://github.com/cilium/cilium-cli/releases/download/{{ cilium_cli_version }}/cilium-linux-{{ architecture }}.tar.gz
+            - name: 'cilium-linux-{{ architecture }}.tar.gz.sha256sum'
+              url: https://github.com/cilium/cilium-cli/releases/download/{{ cilium_cli_version }}/cilium-linux-{{ architecture }}.tar.gz.sha256sum
+        - name: Verify checksum
+          when: not cilium_cli_bin.stat.exists
+          ansible.builtin.command:
+            argv:
+              - sha256sum
+              - --check
+              - '/tmp/cilium-linux-{{ architecture }}.tar.gz.sha256sum'
+            chdir: /tmp
+          register: checksum
+          changed_when: checksum.changed
+        - name: Extract tar package
+          when: not cilium_cli_bin.stat.exists
+          ansible.builtin.unarchive:
+            src: '/tmp/cilium-linux-{{ architecture }}.tar.gz'
+            remote_src: true
+            dest: /usr/local/bin
+            mode: '0755'

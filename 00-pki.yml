@@ -1,0 +1,62 @@
+---
+- name: Generate ca certificate
+  hosts: localhost
+  tasks:
+    - name: Create directories
+      vars:
+        directories:
+          - certs
+          - certs/ca
+          - certs/ca/certs
+          - certs/ca/csr
+          - certs/ca/keys
+      block:
+        - name: Gather directory stats
+          ansible.builtin.stat:
+            path: '{{ root }}/{{ item }}'
+          register: file_stat
+          loop: '{{ directories }}'
+
+        - name: Ensure ouptut directory
+          when: not ((file_stat.results | selectattr('item', 'equalto', item) | first).stat.exists)
+          ansible.builtin.file:
+            path: '{{ root }}/{{ item }}'
+            mode: '0755'
+            state: directory
+            recurse: true
+          loop: '{{ directories }}'
+
+    - name: CA Block
+      vars:
+        ca_base: '{{ root }}/certs/ca'
+      block:
+        - name: Create CA key
+          community.crypto.openssl_privatekey:
+            path: '{{ ca_base }}/keys/ca.key'
+            mode: '0400'
+            size: 4096
+            type: RSA
+            state: present
+
+        - name: Create a CSR for CA certificate
+          community.crypto.openssl_csr:
+            path: '{{ ca_base }}/csr/ca.csr'
+            mode: '0644'
+            privatekey_path: '{{ ca_base }}/keys/ca.key'
+            common_name: Incus Inc. Root CA
+            use_common_name_for_san: true
+            basic_constraints:
+              - 'CA:TRUE'
+            basic_constraints_critical: true
+            key_usage:
+              - keyCertSign
+            key_usage_critical: true
+
+        - name: Create a Self Signed CA certificate
+          community.crypto.x509_certificate:
+            path: '{{ ca_base }}/certs/ca.crt'
+            mode: '0644'
+            csr_path: '{{ ca_base }}/csr/ca.csr'
+            privatekey_path: '{{ ca_base }}/keys/ca.key'
+            state: present
+            provider: selfsigned
