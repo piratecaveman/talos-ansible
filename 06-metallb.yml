@@ -1,0 +1,57 @@
+- name: Install metallb
+  hosts: mk8s
+  gather_facts: false
+  tasks:
+    - name: Add metallb helm repo
+      kubernetes.core.helm_repository:
+        kubeconfig: '{{ home_dir }}/.kube/config'
+        repo_name: metallb
+        repo_url: https://metallb.github.io/metallb
+        repo_state: present
+
+    - name: Install metallb
+      kubernetes.core.helm:
+        release_name: metallb
+        release_namespace: metallb-system
+        create_namespace: true
+        kubeconfig: '{{ home_dir }}/.kube/config'
+        release_state: present
+        reuse_values: true
+        chart_ref: metallb/metallb
+        release_values:
+          labels:
+            pod-security.kubernetes.io/enforce: privileged
+            pod-security.kubernetes.io/audit: privileged
+            pod-security.kubernetes.io/warn: privileged
+          speaker:
+            frr:
+              enabled: true
+
+    - name: Assign IPAddressPool CRD to Metallb
+      kubernetes.core.k8s:
+        kubeconfig: '{{ home_dir }}/.kube/config'
+        state: present
+        resource_definition:
+          apiVersion: metallb.io/v1beta1
+          kind: IPAddressPool
+          metadata:
+            name: loadbalancer
+            namespace: metallb-system
+          spec:
+            addresses:
+              - 192.168.112.0/20
+            avoidBuggyIPs: true
+
+    - name: Create L2 Advertisement CRD
+      kubernetes.core.k8s:
+        kubeconfig: '{{ home_dir }}/.kube/config'
+        state: present
+        resource_definition:
+          apiVersion: metallb.io/v1beta1
+          kind: L2Advertisement
+          metadata:
+            name: loadbalancer-l2-advt
+            namespace: metallb-system
+          spec:
+            ipAddressPools:
+              - loadbalancer

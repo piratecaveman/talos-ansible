@@ -1,0 +1,155 @@
+- name: Setup hubble
+  gather_facts: false
+  hosts: hubble
+  become: true
+  become_user: root
+  become_method: ansible.builtin.sudo
+  tasks:
+    - name: Change DNS address
+      ansible.builtin.copy:
+        dest: /etc/systemd/resolved.conf
+        mode: '0644'
+        content: |
+          [Resolve]
+          DNS=192.168.0.1
+          Domains=~.
+      notify: reload_dns
+
+    - name: Install required packages
+      ansible.builtin.apt:
+        name:
+          - ca-certificates
+          - curl
+          - nginx
+          - python3-debian
+        state: present
+        update_cache: true
+        install_recommends: true
+
+    - name: Setup docker
+      block:
+        - name: Create keyrings directory
+          ansible.builtin.file:
+            path: /etc/apt/keyrings
+            mode: '0755'
+            state: directory
+
+        - name: Download docker keyring
+          ansible.builtin.get_url:
+            url: https://download.docker.com/linux/ubuntu/gpg
+            dest: /etc/apt/keyrings/docker.asc
+            mode: '0444'
+
+        - name: Add docker repository
+          ansible.builtin.deb822_repository:
+            name: docker
+            uris:
+              - https://download.docker.com/linux/ubuntu
+            architectures:
+              - amd64
+            signed_by: /etc/apt/keyrings/docker.asc
+            enabled: true
+            types:
+              - deb
+            state: present
+            mode: '0644'
+            suites:
+              - noble
+            components:
+              - stable
+
+        - name: Install docker packages
+          ansible.builtin.apt:
+            name:
+              - docker-ce
+              - docker-ce-cli
+              - containerd.io
+              - docker-buildx-plugin
+              - docker-compose-plugin
+            state: present
+            update_cache: true
+
+        - name: Configure docker daemon
+          ansible.builtin.copy:
+            dest: /etc/docker/daemon.json
+            mode: '0640'
+            group: docker
+            content: |
+              {
+                "default-address-pools": [
+                  {
+                    "base": "192.168.64.0/20",
+                    "size": 24
+                  }
+                ]
+              }
+          notify: restart_docker
+
+    - name: Setup ssl certificate
+      block:
+        - name: Ensure ssl directory
+          ansible.builtin.file:
+            path: /usr/share/ssl
+            state: directory
+            mode: '0755'
+
+        - name: Copy certificates
+          ansible.builtin.copy:
+            src: '{{ root }}/certs/hubble/{{ item.parent }}/{{ item.name }}'
+            dest: '/usr/share/ssl/{{ item.name }}'
+            mode: '{{ item.mode }}'
+          loop:
+            - name: hubble.crt
+              parent: certs
+              mode: '0644'
+            - name: hubble_fullchain.crt
+              parent: certs
+              mode: '0644'
+            - name: hubble.key
+              parent: keys
+              mode: '0640'
+
+        - name: Copy CA certificate
+          ansible.builtin.copy:
+            src: '{{ root }}/certs/ca/certs/ca.crt'
+            dest: /usr/share/ssl/ca.crt
+            mode: '0444'
+
+    - name: Copy hubble conf
+      become: true
+      become_user: wraith
+      become_method: ansible.builtin.sudo
+      block:
+        - name: Create deployment directory
+          ansible.builtin.file:
+            path: '{{ home_dir }}/deploys'
+            mode: '0755'
+            state: directory
+        - name: Copy configuration file
+          ansible.builtin.copy:
+            dest: '{{ home_dir }}/deploys/docker-compose.yml'
+            src: '{{ root }}/files/02-hubble.yml'
+            mode: '0644'
+  handlers:
+    - name: Reload resolver
+      ansible.builtin.systemd_service:
+        name: systemd-resolved.service
+        state: restarted
+        daemon_reload: true
+        enabled: true
+      listen: reload_dns
+
+    - name: Restart docker socket
+      ansible.builtin.systemd:
+        name: docker.socket
+        state: restarted
+        enabled: true
+      listen: restart_docker
+
+    - name: Restart docker daemon
+      ansible.builtin.systemd_service:
+        name: docker.service
+        state: restarted
+        enabled: true
+      retries: 5
+      listen: restart_docker

@@ -1,0 +1,21 @@
+- name: Install metrics server
+  hosts: mk8s
+  gather_facts: false
+  tasks:
+    - name: Add metrics server repo
+      kubernetes.core.helm_repository:
+        repo_name: metrics-server
+        repo_url: https://kubernetes-sigs.github.io/metrics-server/
+        kubeconfig: '{{ home_dir }}/.kube/config'
+        repo_state: present
+
+    - name: Install metrics-server
+      kubernetes.core.helm:
+        release_name: metrics-server
+        release_namespace: kube-system
+        kubeconfig: '{{ home_dir }}/.kube/config'
+        chart_ref: metrics-server/metrics-server
+        release_state: present
+        release_values:
+          args:
+            - --kubelet-insecure-tls

@@ -1,0 +1,152 @@
+- name: Pre init stage
+  hosts: k8s
+  gather_facts: true
+  gather_subset:
+    - devices
+  become: true
+  become_user: root
+  become_method: ansible.builtin.sudo
+  tasks:
+    - name: Disable Swap
+      when: ansible_swaptotal_mb != 0
+      block:
+        - name: Disable swap (1/3)
+          ansible.builtin.command:
+            argv:
+              - /usr/sbin/swapoff
+              - -a
+          register: swapoff_command
+          changed_when: swapoff_command.changed
+        - name: Disable swap (2/3)
+          ansible.posix.mount:
+            path: swap
+            fstype: swap
+            state: absent
+        - name: Disable swap (3/3)
+          ansible.builtin.systemd:
+            name: swap.target
+            state: stopped
+            masked: true
+            enabled: false
+
+    - name: Load kernel modules
+      vars:
+        modules:
+          - br_netfilter
+          - overlay
+          - rbd
+      community.general.modprobe:
+        name: '{{ item }}'
+        state: present
+        persistent: present
+      loop: "{{ modules }}"
+
+    - name: Set kernel parameters
+      # https://overcast.blog/kernel-tuning-and-optimization-for-kubernetes-a-guide-a3bdc8f7d255
+      vars:
+        params:
+          - key: net.bridge.bridge-nf-call-iptables
+            value: 1
+          - key: net.bridge.bridge-nf-call-ip6tables
+            value: 1
+          - key: net.ipv4.ip_forward
+            value: 1
+          - key: vm.swappiness
+            value: 0
+          - key: net.ipv4.tcp_max_syn_backlog
+            value: 2048
+          - key: net.ipv4.ip_local_port_range
+            value: '10240 65535'
+          - key: vm.overcommit_memory
+            value: 1
+          - key: vm.dirty_ratio
+            value: 5
+          - key: vm.dirty_background_ratio
+            value: 1
+      block:
+        - name: Set kernel parameters (1/3)
+          ansible.builtin.file:
+            path: /etc/sysctl.d
+            state: directory
+            mode: '0755'
+        - name: Set kernel parameters (2/3)
+          ansible.posix.sysctl:
+            name: '{{ item.key }}'
+            value: '{{ item.value }}'
+            state: present
+            reload: true
+            sysctl_set: true
+            sysctl_file: /etc/sysctl.d/10-k8s.conf
+          loop: "{{ params }}"
+
+    - name: Install packages
+      ansible.builtin.apt:
+        name:
+          - curl
+          - ca-certificates
+          - apt-transport-https
+          - git
+          - gpg
+          - lvm2
+          - jq
+          - software-properties-common
+          - python3-debian
+          - python3-kubernetes
+          - ipvsadm
+        state: present
+        update_cache: true
+        install_recommends: true
+
+    - name: Setup DNS
+      block:
+        - name: Setup DNS
+          ansible.builtin.copy:
+            dest: /etc/systemd/resolved.conf
+            mode: '0644'
+            content: |
+              [Resolve]
+              DNS=192.168.0.1
+              Domains=~.
+          notify:
+            - reload_dns
+
+    - name: Setup ssl certificates
+      vars:
+        entity: kube
+      block:
+        - name: Ensure ssl directory
+          ansible.builtin.file:
+            path: /usr/share/ssl
+            state: directory
+            mode: '0755'
+
+        - name: Copy certificates
+          ansible.builtin.copy:
+            src: '{{ root }}/certs/{{ entity }}/{{ item.parent }}/{{ item.name }}'
+            dest: '/usr/share/ssl/{{ item.name }}'
+            mode: '{{ item.mode }}'
+          loop:
+            - name: '{{ entity }}.crt'
+              parent: certs
+              mode: '0644'
+            - name: '{{ entity }}_fullchain.crt'
+              parent: certs
+              mode: '0644'
+            - name: '{{ entity }}.key'
+              parent: keys
+              mode: '0640'
+
+        - name: Copy CA certificate
+          ansible.builtin.copy:
+            src: '{{ root }}/certs/ca/certs/ca.crt'
+            dest: /usr/share/ssl/ca.crt
+            mode: '0444'
+
+  handlers:
+    - name: Reload systemd-resolved
+      listen: reload_dns
+      ansible.builtin.systemd_service:
+        name: systemd-resolved.service
+        state: restarted
+        enabled: true
+        daemon_reload: true

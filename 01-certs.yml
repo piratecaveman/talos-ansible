@@ -1,0 +1,17 @@
+- name: Generate a certificate
+  hosts: localhost
+  tasks:
+    - name: Generate Certificate
+      vars:
+        certs_for:
+          - entity: hubble
+            tld: ks
+            base_path: '{{ root }}/certs/hubble'
+          - entity: kube
+            tld: ls
+            base_path: '{{ root }}/certs/kube'
+      ansible.builtin.include_tasks:
+        file: tasks/01-certs.0.yml
+      loop: '{{ certs_for }}'
+      loop_control:
+        loop_var: entity

@@ -1,0 +1,109 @@
+- name: Run Kubernetes
+  hosts: k8s
+  gather_facts: false
+  become: true
+  become_user: root
+  become_method: ansible.builtin.sudo
+  vars:
+    kubernetes_version: 1.32
+    kubernetes_version_alt: v1.32
+    crio_version: 1.32
+    crio_version_alt: v1.32
+  tasks:
+    - name: Install kubernetes
+      block:
+        - name: Ensure keyrings directory
+          ansible.builtin.file:
+            path: /etc/apt/keyrings
+            mode: '0755'
+            state: directory
+        - name: Download kubernetes keyring
+          ansible.builtin.get_url:
+            url: 'https://pkgs.k8s.io/core:/stable:/{{ kubernetes_version_alt }}/deb/Release.key'
+            dest: /tmp/KRelease.key
+            mode: '0400'
+        - name: Dearmor kubernetes keyring
+          ansible.builtin.command:
+            argv:
+              - gpg
+              - --dearmor
+              - -o
+              - /etc/apt/keyrings/kubernetes-apt-keyring.gpg
+              - /tmp/KRelease.key
+            creates: /etc/apt/keyrings/kubernetes-apt-keyring.gpg
+        - name: Create kubernetes repository
+          ansible.builtin.deb822_repository:
+            name: kubernetes
+            enabled: true
+            state: present
+            mode: '0644'
+            types:
+              - deb
+            uris:
+              - 'https://pkgs.k8s.io/core:/stable:/{{ kubernetes_version_alt }}/deb/'
+            suites:
+              - /
+            signed_by: /etc/apt/keyrings/kubernetes-apt-keyring.gpg
+        - name: Install kubernetes packages
+          ansible.builtin.apt:
+            name:
+              - kubeadm
+              - kubectl
+              - kubelet
+            state: present
+            update_cache: true
+            install_recommends: true
+        - name: Hold kubernetes packages
+          ansible.builtin.dpkg_selections:
+            name: '{{ item }}'
+            selection: hold
+          loop:
+            - kubectl
+            - kubeadm
+            - kubelet
+
+    - name: Install crio
+      block:
+        - name: Download crio keyring
+          ansible.builtin.get_url:
+            url: 'https://download.opensuse.org/repositories/isv:/cri-o:/stable:/{{ crio_version_alt }}/deb/Release.key'
+            mode: '0400'
+            dest: /tmp/CRelease.key
+        - name: Dearmor crio keyring
+          ansible.builtin.command:
+            argv:
+              - gpg
+              - --dearmor
+              - -o
+              - /etc/apt/keyrings/cri-o-apt-keyring.gpg
+              - /tmp/CRelease.key
+            creates: /etc/apt/keyrings/cri-o-apt-keyring.gpg
+        - name: Create crio repository
+          ansible.builtin.deb822_repository:
+            name: crio
+            state: present
+            enabled: true
+            uris:
+              - 'https://download.opensuse.org/repositories/isv:/cri-o:/stable:/{{ crio_version_alt }}/deb/'
+            types:
+              - deb
+            mode: '0644'
+            suites:
+              - /
+            signed_by: /etc/apt/keyrings/cri-o-apt-keyring.gpg
+        - name: Install crio packages
+          ansible.builtin.apt:
+            name:
+              - cri-o
+            state: present
+            update_cache: true
+            install_recommends: true
+        - name: Enable crio service
+          ansible.builtin.systemd:
+            name: '{{ item }}'
+            state: restarted
+            enabled: true
+            daemon_reload: true
+          loop:
+            - crio.service
+            - kubelet.service

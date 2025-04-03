@@ -1,0 +1,19 @@
+plugin: community.general.lxd
+url: unix:/run/incus/unix.socket
+type_filter: both
+groupby:
+  master:
+    type: pattern
+    attribute: ^mk8s$
+  workers:
+    type: pattern
+    attribute: ^wk8s\d+$
+  k8s:
+    type: pattern
+    attribute: ^.k8s\d*?$
+  hub:
+    type: pattern
+    attribute: ^hubble$
+  knet:
+    type: pattern
+    attribute: ^.k8s\d*?$|^hubble$

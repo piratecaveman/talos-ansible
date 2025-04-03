@@ -1,0 +1,261 @@
+- name: Init k8s cluster
+  hosts: mk8s
+  gather_facts: false
+  become: true
+  become_user: root
+  become_method: ansible.builtin.sudo
+  tasks:
+    - name: Detect kubernetes cluster
+      block:
+        - name: Get listening ports
+          community.general.listen_ports_facts:
+        - name: Check kubernetes ports
+          vars:
+            expected_ports:
+              - 6443
+              - 10248
+              - 10250
+          ansible.builtin.set_fact:
+            listeners: '{{ ansible_facts.tcp_listen | selectattr("port", "in", expected_ports) }}'
+
+    - name: Actual init
+      when: not listeners
+      block:
+        - name: Generate bootstrap token
+          block:
+            - name: Generate bootstrap token
+              ansible.builtin.command:
+                argv:
+                  - kubeadm
+                  - token
+                  - generate
+              register: bootstrap
+              changed_when: bootstrap.changed
+            - name: Register bootstrap token
+              ansible.builtin.set_fact:
+                bootstrap_token: '{{ bootstrap.stdout }}'
+
+        - name: Copy InitConfiguration file
+          tags:
+            - create_config
+          vars:
+            advertise_address: '{{ ansible_host }}'
+            dry_run: false
+            cluster_name: kubernetes
+            kubernetes_version: '1.32.3'
+            kubernetes_domain: kss
+            pod_subnet: '192.168.80.0/20'
+            service_subnet: '192.168.96.0/20'
+          ansible.builtin.template:
+            mode: '0400'
+            dest: /tmp/kubeinit.yml
+            src: '{{ root }}/files/01-kubeconfig-init.yml.j2'
+
+        - name: Pull images
+          ansible.builtin.command:
+            argv:
+              - kubeadm
+              - config
+              - images
+              - pull
+          register: image_pull
+          changed_when: image_pull.changed
+
+        - name: Run kubeadm
+          ansible.builtin.command:
+            argv:
+              - kubeadm
+              - init
+              - --config
+              - /tmp/kubeinit.yml
+          register: kubeadm_init
+          changed_when: kubeadm_init.changed
+
+- name: Join worker nodes
+  hosts: workers
+  gather_facts: false
+  become: true
+  become_user: root
+  become_method: ansible.builtin.sudo
+  tasks:
+    - name: Detect already joined nodes
+      vars:
+        expected_ports:
+          - 10248
+          - 10250
+      block:
+        - name: Get listening ports
+          community.general.listen_ports_facts:
+        - name: Detect listeners
+          ansible.builtin.set_fact:
+            listeners: '{{ ansible_facts.tcp_listen | selectattr("port", "in", expected_ports) }}'
+
+    - name: Join node
+      when: not listeners
+      block:
+        - name: Create join command
+          delegate_to: mk8s
+          ansible.builtin.command:
+            argv:
+              - kubeadm
+              - token
+              - create
+              - --print-join-command
+              - --ttl=1h
+          register: join_command_raw
+          changed_when: join_command_raw.changed
+        - name: Register join command
+          ansible.builtin.set_fact:
+            join_command: "{{ join_command_raw.stdout }}"
+        - name: Join node
+          ansible.builtin.command:
+            cmd: '{{ join_command }}'
+          register: output
+          changed_when: output.changed
+
+- name: Join control-plane nodes
+  hosts: master
+  gather_facts: false
+  become: true
+  become_user: root
+  become_method: ansible.builtin.sudo
+  tasks:
+    - name: Detect already joined nodes
+      vars:
+        expected_ports:
+          - 6443
+          - 10248
+          - 10250
+      block:
+        - name: Get listening ports
+          community.general.listen_ports_facts:
+        - name: Detect listeners
+          ansible.builtin.set_fact:
+            listeners: '{{ ansible_facts.tcp_listen | selectattr("port", "in", expected_ports) }}'
+
+    - name: Create certificate key
+      delegate_to: mk8s
+      when: not listeners
+      block:
+        - name: Generate certificate key
+          ansible.builtin.command:
+            argv:
+              - kubeadm
+              - certs
+              - certificate-key
+          register: certificate_key_raw
+          changed_when: certificate_key_raw.changed
+        - name: Register certificate key
+          ansible.builtin.set_fact:
+            certificate_key: certificate_key_raw.stdout
+        - name: Upload certificates
+          ansible.builtin.command:
+            argv:
+              - kubeadm
+              - init
+              - phase
+              - upload-certs
+              - --upload-certs
+              - --certificate-key
+              - '{{ certificate_key }}'
+          register: upload_certs
+          changed_when: upload_certs.changed
+
+    - name: Join node
+      when: not listeners
+      block:
+        - name: Create join command
+          delegate_to: mk8s
+          ansible.builtin.command:
+            argv:
+              - kubeadm
+              - token
+              - create
+              - --print-join-command
+              - --ttl=1h
+              - --certificate-key
+              - '{{ certificate_key }}'
+              - --control-plane
+          register: join_command_raw
+          changed_when: join_command_raw.changed
+        - name: Register join command
+          ansible.builtin.set_fact:
+            join_command: "{{ join_command_raw.stdout }}"
+        - name: Join node
+          ansible.builtin.command:
+            cmd: '{{ join_command }}'
+          register: output
+          changed_when: output.changed
+
+- name: Install helm
+  hosts: master
+  gather_facts: false
+  become: true
+  become_user: root
+  become_method: ansible.builtin.sudo
+  tags:
+    - helm
+  tasks:
+    - name: Get helm keyring
+      block:
+        - name: Ensure keyrings directory
+          ansible.builtin.file:
+            path: /usr/share/keyrings
+            state: directory
+            mode: '0755'
+        - name: Download keyring
+          ansible.builtin.get_url:
+            url: https://baltocdn.com/helm/signing.asc
+            dest: /tmp/helm.asc
+            mode: '0400'
+        - name: Dearmor helm keyring
+          ansible.builtin.command:
+            argv:
+              - gpg
+              - --dearmor
+              - -o
+              - /usr/share/keyrings/helm.gpg
+              - /tmp/helm.asc
+            creates: /usr/share/keyrings/helm.gpg
+
+    - name: Add helm repository
+      ansible.builtin.deb822_repository:
+        name: helm
+        uris:
+          - https://baltocdn.com/helm/stable/debian/
+        suites:
+          - all
+        components:
+          - main
+        types:
+          - deb
+        signed_by: /usr/share/keyrings/helm.gpg
+        architectures:
+          - amd64
+        enabled: true
+        state: present
+
+    - name: Install helm
+      ansible.builtin.apt:
+        name:
+          - helm
+        state: present
+        update_cache: true
+
+    - name: Setup kube config
+      block:
+        - name: Ensure kube directory
+          ansible.builtin.file:
+            path: '{{ home_dir }}/.kube'
+            mode: '0755'
+            state: directory
+            owner: wraith
+            group: wraith
+        - name: Copy config
+          ansible.builtin.copy:
+            src: /etc/kubernetes/admin.conf
+            remote_src: true
+            dest: '{{ home_dir }}/.kube/config'
+            mode: '0600'
+            owner: wraith
+            group: wraith
